@@ -1,0 +1,79 @@
+
+# JAGS scorpion model -----------------------------------------------------
+sink("OccMod1.txt")
+cat("
+    model {
+    
+    ## Priors ##
+    for(k in 1:n_spp){                    # Loop over species
+      lpsi[k] ~ dnorm(mu.lpsi, tau.lpsi)
+      lp[k] ~ dnorm(mu.lp, tau.lp)
+      beta1[k] ~ dnorm(mu.beta1, tau.beta1)                # ndvi
+      beta2[k] ~ dnorm(mu.beta2, tau.beta2)                # map_ctn
+      beta3[k] ~ dnorm(mu.beta3, tau.beta3)                # elev   
+      beta4[k] ~ dnorm(mu.beta4, tau.beta4)                # elev_range   
+    }
+    
+    mu.psi ~ dunif(0,1)
+    mu.lpsi <- logit(mu.psi)
+    sd.lpsi ~ dunif(0,5)
+    tau.lpsi <- pow(sd.lpsi, -2)
+    
+    mu.p ~ dunif(0,1)
+    mu.lp <- logit(mu.p)
+    sd.lp ~ dunif(0,5)
+    tau.lp <- pow(sd.lp, -2)
+    
+    mu.beta1 ~ dnorm(0, 0.1)
+    sd.beta1 ~ dt(0,1,1)T(0,)  
+    tau.beta1 <- pow(sd.beta1, -2)
+    
+    mu.beta2 ~ dnorm(0, 0.1)
+    sd.beta2 ~ dt(0,1,1)T(0,) 
+    tau.beta2 <- pow(sd.beta2, -2)
+    
+    mu.beta3 ~ dnorm(0, 0.1)
+    sd.beta3 ~ dt(0,1,1)T(0,)  
+    tau.beta3 <- pow(sd.beta3, -2)
+    
+    mu.beta4 ~ dnorm(0, 0.1)
+    sd.beta4 ~ dt(0,1,1)T(0,)  
+    tau.beta4 <- pow(sd.beta4, -2)
+    
+
+    # Fixed effects   
+    alpha1 ~ dnorm(0, 0.1)  # Air temperature  
+    alpha2 ~ dnorm(0, 0.1)  # Effect of observer
+    
+ 
+    ## Ecological model for latent occurrence z (process model) ##
+    for(k in 1:n_spp){                # Loop over species
+      for (i in 1:n_pen) {            # Loop over sites
+        z[i,k] ~ dbern(psi[i,k])
+        logit(psi[i,k]) <- lpsi[k] + beta1[k]*ndvi[i] + beta2[k]*map_ctn[i] + 
+                                     beta3[k]*elev[i] + beta4[k]*elev_range[i] 
+      }
+    }
+    
+    ## Observation model for observed data Y ##
+    for(k in 1:n_spp){ 
+      for (i in 1:n_pen) {
+        for (j in 1:rep_vec[i]){ 
+          logit(p[i,j,k]) <- lp[k] + alpha1*airtemp[i,j] + alpha2*equals(observer[i,j],2) #Effect of observer 2
+          mup[i,j,k] <- z[i,k] * p[i,j,k]
+          Y[i,j,k] ~ dbern(mup[i,j,k])
+        }
+      }
+    }
+    
+    ## Derived quantities ##
+    for(k in 1:n_spp){            # Loop over species
+      Nocc.fs[k] <- sum(z[,k])    # Add up number of occupied sites among the list of species
+    }
+    
+    for (i in 1:n_pen) {          # Loop over sites
+      Nsite[i] <- sum(z[i,])      # Add up number of occurring species at each site
+    }
+ }
+    ",fill = TRUE)
+sink()

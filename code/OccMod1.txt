@@ -1,0 +1,78 @@
+
+    model {
+    
+    ## Priors ##
+    for(k in 1:n.spp){                    # Loop over species
+     lpsi[k] ~ dnorm(mu.lpsi, tau.lpsi)
+     lp[k] ~ dnorm(mu.lp, tau.lp)
+     beta1[k] ~ dnorm(mu.beta1, tau.beta1)               # Elevation
+     beta2[k] ~ dnorm(mu.beta2, tau.beta2)               # Mean rainfall
+     beta3[k] ~ dnorm(mu.beta3, tau.beta3)               # Temp
+    # alpha1[k] ~ dnorm(mu.alpha1, tau.alpha1)            # Air temp
+    
+    }
+    
+    mu.psi ~ dunif(0,1)
+    mu.lpsi <- logit(mu.psi)
+    sd.lpsi ~ dunif(0,5)
+    tau.lpsi <- pow(sd.lpsi, -2)
+    
+    mu.p ~ dunif(0,1)
+    mu.lp <- logit(mu.p)
+    sd.lp ~ dunif(0,5)
+    tau.lp <- pow(sd.lp, -2)
+    
+    mu.beta1 ~ dnorm(0, 0.1)
+    sd.beta1 ~ dt(0,1,1)T(0,)  
+    tau.beta1 <- pow(sd.beta1, -2)
+    
+    mu.beta2 ~ dnorm(0, 0.1)
+    sd.beta2 ~ dt(0,1,1)T(0,) 
+    tau.beta2 <- pow(sd.beta2, -2)
+    
+    mu.beta3 ~ dnorm(0, 0.1)
+    sd.beta3 ~ dt(0,1,1)T(0,)  
+    tau.beta3 <- pow(sd.beta3, -2)
+
+    # Fixed effects   
+    # beta1 ~ dnorm(0, 0.1)      # elev
+    # beta2 ~ dnorm(0, 0.1)      # map
+    # beta3 ~ dnorm(0, 0.1)      # temp
+    alpha1 ~ dnorm(0, 0.1)    
+   
+    # mu.alpha1 ~ dnorm(0, 0.1)
+    # sd.alpha1 ~ dt(0,1,1)T(0,)  
+    # tau.alpha1 <- pow(sd.alpha1, -2)
+    # 
+    ## Ecological model for latent occurrence z (process model) ##
+    for(k in 1:n.spp){                # Loop over species
+       
+      for (i in 1:n.pen) {            # Loop over sites
+       
+        z[i,k] ~ dbern(psi[i,k])
+        logit(psi[i,k]) <- lpsi[k] + beta1[k]*elev[i] + beta2[k]*map[i] + beta3[k]*temp[i]
+      
+       }
+    }
+    
+    ## Observation model for observed data Y ##
+    for(k in 1:n.spp){ 
+      for (i in 1:n.pen) {
+        for (j in 1:rep.vec[i]){ 
+          logit(p[i,j,k]) <- lp[k] + alpha1*airtemp[i,j]
+          mup[i,j,k] <- z[i,k] * p[i,j,k]
+          Y[i,j,k] ~ dbern(mup[i,j,k])
+        }
+      }
+    }
+    
+    ## Derived quantities ##
+    for(k in 1:n.spp){          # Loop over species
+      Nocc.fs[k] <- sum(z[,k])    # Add up number of occupied sites among the list of species
+    }
+    
+    for (i in 1:n.pen) {         # Loop over sites
+      Nsite[i] <- sum(z[i,])      # Add up number of occurring species at each site
+    }
+  }
+    
