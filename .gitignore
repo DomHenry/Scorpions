@@ -2,3 +2,8 @@
 .Rhistory
 *.RData
 .Ruserdata
+old
+Occurence maps.RData
+traceplots
+Scorpion species list.csv
+scorpions_modoutF.csv
