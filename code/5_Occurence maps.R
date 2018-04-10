@@ -117,12 +117,14 @@ for(i in seq_along(sppref)){
   res(PSIras) <- c(0.0833,0.0833)
   PSIras <- rasterize(pentads,PSIras,sppref[i])
   plot(PSIras,breaks=brks, #lab.breaks=brks,
-       col = cols, zlim=c(0,0.5), main = spp_ref[i])
+       col = cols, zlim=c(0,0.5), main = spp_ref[i]) # Change this zlim in other plots
   plot(towns, add = T, pch = 20,cex = 0.7)
   maptools::pointLabel(coordinates(towns),labels=towns$field_2, cex = 0.7)
   
 }
 dev.off()
+
+
 
 # End ---------------------------------------------------------------------
 
