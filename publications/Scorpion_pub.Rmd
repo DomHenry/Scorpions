@@ -1,0 +1,546 @@
+---
+title: "Karoo BioGaps report: Scorpion occupancy models"
+author: "Dominic Henry"
+date: "11 April 2018"
+output: 
+  pdf_document:
+      number_sections: TRUE
+      toc: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width=10, fig.height=6, #fig.path='Figs/',
+               echo=FALSE, warning=FALSE, message=FALSE)
+
+```
+
+
+```{r load libraries}
+library(boot)
+library(coda)
+library(jagsUI)
+library(here)
+library(kableExtra)
+library(sp)
+library(rgdal)
+library(lattice)
+library(rasterVis)
+library(gridExtra)
+library(ggpubr)
+library(raster)
+library(grid)
+library(tidyverse)
+```
+
+```{r import & create plot df}
+wslist <- dir(here("data output"),pattern = "F_")
+load(here("data output",wslist[1]))
+source(here("code","0_Analysis functions.R"))
+plotdf <- as_tibble(mod.out.F$summary[,1:7]) %>% 
+  mutate(param = row.names(mod.out.F$summary)) %>% 
+  select(param,mean,`2.5%`,`97.5%`) %>% 
+  rename(lower = `2.5%`, upper = `97.5%`)
+
+```
+
+
+```{r create psi and p table}
+pp_means<- plotdf %>% 
+  filter(param %in% c("mu.psi","mu.p"))
+
+pp_sds<- plotdf %>%
+  filter(param %in% c("sd.lpsi","sd.lp")) %>% 
+  mutate_at(vars(mean:upper),funs(inv.logit)) %>% 
+  mutate(param = str_replace(param, "l",""))
+
+pp <- bind_rows(pp_means,pp_sds)
+
+colnames(pp) <- c("Parameter", "Mean", "Lower 95% CI", "Upper 95% CI")
+#pp$Parameter <- c("$\\psi$","$p$","$\\psi_{SD}$","$p_{SD}$")
+```
+
+
+\pagebreak
+
+# Summary
+
+The scorpion team, led by Lorenzo Perdini, carried out three sampling field trips in February 2017, December 2017 and February 2018, respectively. In total the team managed to visit the 30 essential pentads. Using a double-observer protocol they completed 110 transects in which they recorded 25 species from three families (*Buthidae*, *Hormuridae* and *Scorpionidae*). See Appendix A for a full list of species recorded in the surveys. Excitingly, the team captured a specimen from the Opistophthalmus genus which, as of yet, remains undescribed. The team used a combination of diurnal active searching (rock-flipping, burrow-excavating) and nocturnal search surveys. 
+
+Species were modelled as a random effect in the analysis which meant we were able to determine occupancy and detection probabilities for both individual species and the larger scorpion community as a whole. Mean community-level occupancy probability was fairly low ($\psi$ = `r round(pp[1,2],2)`) while mean detection probability was moderate ($p$ = `r round(pp[2,2],2)`). It was clear that there was substantial variation in these occupancy and detection probability estimates between species ($\psi_{SD}$ = `r round(pp[3,2],2)` and $p_{SD}$ = `r round(pp[4,2],2)`).
+
+The table below shows the estimates and the associated uncertainty (95% credible intervals) of occupancy and detection parameters. 
+
+\  
+\  
+
+```{r print psi and p table}
+ kable(pp, digits = 2, format = "latex", booktabs = T) %>%
+  kable_styling(position = "center")
+# kable(pp, digits = 2, format = "latex", booktabs = T, escape = F)
+# Can't get the table to work with math symbols
+```
+
+\pagebreak
+
+# Detection process
+
+Detection probability was modelled as a function of observer ID (LP or RC) and air temperature recorded during each survey.  The equation for the detection sub-model can be written as $$ p_{ijk} = \alpha_0 + \alpha_1*observerID_{ij} + \alpha_2*airtemp_{ij} $$ where $p_{ijk}$ is the detection probability of a species *k* at site *i* in survey *j*. 
+
+
+Below is a plot of the standardised magnitude of the detection coefficients (mean $\pm$ 95% CI). The results show that detection probability increased as air temperature decreased. Species detectability differed with observer identification with observer 2 (RC) having a significantly lower coefficient.  
+
+\  
+\  
+\  
+\  
+
+
+```{r detection coefficients, fig.width= 3.5, fig.height=2.5, fig.align = 'center'}
+alphaR <- plotdf %>% filter(str_detect(param,"alpha")) %>% 
+  mutate(param = c("Air temp","Observer"))
+
+ggplot(alphaR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = upper)) +
+  geom_pointrange() + theme_bw() + scale_y_continuous(limits = c(-1.1,0.6))+
+  coord_flip() + geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab("Detection coefficients") + xlab("")+
+  theme(axis.text.x=element_text(size=14),
+        axis.text.y=element_text(size=14),
+        axis.title=element_text(size=14))
+```
+
+\  
+\  
+\  
+
+The relationship between species detectability and air temperature can be visualised in the figure below showing the mean and 95% credible intervals.
+
+\  
+\  
+\  
+
+```{r detection covariate predictions, fig.width= 4.5, fig.height=3, fig.align= 'center'}
+plot1 <- plot_coeff_curves(airtemp_arr,c(15,30,0.1),"alpha1",NA,"mu.p","Air temperature",
+                           "Detection probability",c(0,0.8))
+ 
+grid.arrange(grobs = list(plot1), ncol = 1)
+
+```
+
+\pagebreak
+
+
+```{r create species detection probability df}
+p.spR <- plotdf %>% filter(str_detect(param, "lp\\[")) %>% 
+  mutate(param = spp_ref) %>% 
+  mutate_at(vars(mean:upper),funs(inv.logit))
+```
+
+Mean detection probability was calculated for each species and ranged from `r round(min(p.spR$mean),2)` to `r round(max(p.spR$mean),2)` with *`r p.spR[which.max(p.spR$mean),1]`* being the most detectable species and *`r p.spR[which.min(p.spR$mean),1]`* being the least detectable. Below is a plot of mean detection for each species (plotted with the 95% credible intervals).
+
+\  
+\  
+\  
+
+```{r plot species detection probability, fig.align='center'}
+ggplot(p.spR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = upper)) +
+  geom_pointrange() + theme_bw() + scale_y_continuous(limits = c(0,1))+
+  coord_flip() + geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab("\n Mean detection probability") + xlab("")+
+  theme(axis.text.y=element_text(size=16),
+        axis.text.x=element_text(size=16),
+        axis.title=element_text(size=18))
+
+```
+
+\pagebreak
+
+# Occupancy process
+
+Occupancy probability was modelled as a function of four covariates measured in each pentad: NDVI, rainfall concentration, elevation and terrain ruggedness index (TRI). See Appendix B for maps of each covariate illustrated across the BioGaps study area. The equation for the occupancy sub-model can be written as $$ \psi_{ik} = \beta_0 + \beta_1*NDVI_i + \beta_2*rainConc_i + \beta_3*elev_i + \beta_4*TRI_i $$ where  $\psi_{ik}$ is the occupancy probability of a species *k* at site *i*. 
+
+Below is a plot of the standardised magnitude of the each of the detection coefficients (mean $\pm$ 95% CI). The results show that, at the community level, the environmental covariates are not significant predictors of species occupancy because the coefficients have CIs that overlap with zero. This does not mean that individual species themselves did not respond to environmental variables (see section on random effects below).
+
+\  
+\  
+\  
+
+```{r occupancy coefficients, fig.width = 5, fig.height = 2.5, fig.align= "center"}
+betaR <- plotdf %>% filter(str_detect(param, "mu.beta")) %>% 
+  mutate(param = as.factor(c("NDVI","RainConc", "Elev","TRI")))
+
+ggplot(betaR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = upper)) +
+  geom_pointrange() + theme_bw() + scale_y_continuous(limits = c(-1,1.5))+
+  coord_flip() + geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab("Occupancy coefficients") + xlab("")+
+  theme(axis.text.x=element_text(size=14),
+        axis.text.y=element_text(size=14),
+        axis.title=element_text(size=14))
+```
+
+\  
+\  
+\  
+
+\newpage
+
+The relationship between species occupancy and NDVI, rainfall concentration, elevation and TRI can be visualised in the figure below showing the mean and 95% credible intervals.
+
+\  
+\  
+\  
+
+```{r occupancy predictions, fig.align= "center"}
+covs <- list(pencovs[["ndvi"]],pencovs[["map_ctn"]],pencovs[["elev"]],pencovs[["tri_med"]])
+ranges <- list(c(0,0.5,0.001),c(30,50,1),c(300,1700,5),c(30,1000,5))
+coeffs1 <- list("mu.beta1","mu.beta2","mu.beta3","mu.beta4")
+coeffs2 <- NA
+intname <- "mu.psi"
+xlabs <- list("NDVI","Rainfall concentration","Elevation","TRI")
+ylabs <- list(rep("Occupancy probability",4))
+ylim <- list(c(0,1))
+
+plots_out <- pmap(list(cov = covs, covRange = ranges,
+          coeffname1 = coeffs1,coeffname2 = coeffs2,
+          intname = intname,xlab = xlabs,
+          ylab = ylabs, ylim = ylim),
+     plot_coeff_curves)
+
+# grid.arrange(grobs = plots_out, ncol = 2) 
+
+ggarrange(plots_out[[1]],
+          plots_out[[2]] + rremove("y.text") + rremove("ylab"),
+          plots_out[[3]],
+          plots_out[[4]] + rremove("y.text") + rremove("ylab"),
+          ncol = 2, nrow = 2)
+
+```
+
+\pagebreak
+
+```{r create species occupancy probability}
+psiR <- plotdf %>% filter(str_detect(param, "lpsi")) %>% 
+  filter(!str_detect(param,"sd|mu")) %>% mutate(param = spp_ref) %>% 
+  mutate_at(vars(mean:upper),inv.logit)
+```
+
+
+Mean occupancy probability was calculated for each species and ranged from `r round(min(psiR$mean),2)` to `r round(max(psiR$mean),2)` with *`r psiR[which.max(psiR$mean),1]`* having the highest occupancy and *`r psiR[which.min(psiR$mean),1]`* having the lowest. Below is a plot of mean detection for each species (plotted with the 95% credible intervals).
+
+\  
+\  
+\ 
+
+```{r plot species occupancy probability}
+ggplot(psiR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = upper)) +
+  geom_pointrange() + theme_bw() + scale_y_continuous(limits = c(0,1))+
+  coord_flip() + geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab("Occupancy probability for each species") + xlab("")+
+  theme(axis.text.y=element_text(size=16),
+        axis.text.x=element_text(size=16),
+        axis.title=element_text(size=16,face="bold"))
+```
+
+\  
+\  
+\ 
+\  
+\  
+\  
+\  
+
+Species were modelled as a random effect in the occupancy models and so we were able to determine the relationship between occupancy and environmental covariates for each species. The plots below illustrate the species-level coefficients for the four environmental covariates. Blue lines indicate a significant relationship (i.e., 95% CIs do not overlap with zero). From the NDVI plot we can see that there were 4 species that had higher occupancy probability in areas with a higher primary productivity (with high NDVI) and 5 species that had a higher occupancy probability in dry areas with low primary productivity (low NDVI). There was little support for a significant relationship between occupancy and the remaining three covariates.
+
+\pagebreak
+
+```{r random effects,}
+coeffs <- list("beta1","beta2","beta3","beta4")
+xlims <- list(c(-5,5),c(-2,2),c(-2,2),c(-2,2))
+mainlabs <- list("NDVI","MAP_CTN","ELEV","TRI")
+
+par(mfrow = c(1,2), cex.lab = 1.3, cex.axis = 1.3)
+
+pwalk(list(coeff_name = coeffs, main_lab = mainlabs, xlims = xlims, n = n_spp),
+     random_effect_plots)
+
+```
+
+\pagebreak
+
+# Species richness
+
+## Species richness at sampled sites
+
+```{r create species richness df}
+NsiteR <- plotdf %>% filter(str_detect(param,"Nsite")) %>% 
+  mutate(param = as.factor(pen_ref))
+
+```
+
+
+Below is a plot of mean estimated species richness for each of the sampled pentads. They include the 95% CIs. The results show that richness was highest with `r round(max(NsiteR$mean),0)` species in pentad `r NsiteR[which.max(NsiteR$mean),1]` and lowest with `r round(min(NsiteR$mean),0)` species in pentad `r NsiteR[which.min(NsiteR$mean),1]`.
+
+\  
+\  
+\ 
+
+```{r species richness plot, fig.width= 12, fig.height= 8}
+ggplot(NsiteR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = upper)) +
+  geom_pointrange() + theme_bw() + 
+  scale_y_continuous(limits =  c(0,max(NsiteR$upper)+2), breaks = c(0,2,4,6,8,10,12))+
+  coord_flip() + geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab("\n Species richness") + xlab("")+
+  theme(axis.text.y=element_text(size=16),
+        axis.text.x=element_text(size=16),
+        axis.title=element_text(size=18,face="bold"))
+```
+
+\pagebreak
+
+
+## Number of occupied sites by each species
+
+The models also allowed us to estimate the number of sites that the each species occurred within.
+
+\  
+\  
+\  
+
+```{r number of occupied sites}
+occ.fsR <- plotdf %>% filter(str_detect(param, "occ.fs")) %>% 
+  mutate(param = spp_ref) 
+
+ggplot(occ.fsR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = upper)) +
+  geom_pointrange() + theme_bw() + scale_y_continuous(limits = c(0,30))+
+  coord_flip() + geom_hline(yintercept = 0, linetype = "dotted") +
+  ylab("Est no of sites occupied by each species") + xlab("")+
+  theme(axis.text.y=element_text(size=16),
+        axis.text.x=element_text(size=16),
+        axis.title=element_text(size=16,face="bold"))
+```
+
+\pagebreak
+
+## Species richness and standard deviation map
+
+By combing the occupancy probability estimates of each species we were able to produce a predictive map of Scorpion species richness. The map below also shows the uncertainty associated with these estimates using standard deviation. Species richness was highest in the pentads located in the furthest eastern sections of the study area. 
+
+```{r species richness, fig.width = 11, fig.height=13}
+load(here("data output","Species richness maps.RData"))
+
+ras_ref <- c("spec_rich_mean","spec_rich_sd")
+main_lab <- c("Scorpion species richness","Scorpion species richness - SD")
+
+col_mean <- rev(terrain.colors(255)) 
+col_sd <-  rev(heat.colors(n = 8))
+col_list <- list(col_mean,col_sd)
+
+par(mfrow = c(2,1))
+
+for(i in 1:length(ras_ref)){
+  ras <- raster(ncol = 150, nrow = 150)
+  extent(ras) <- extent(pentads_sp)+0.5 #Add 0.5 buffer
+  res(ras) <- c(0.0833,0.0833)
+  ras <- raster::rasterize(pentads_sp,ras,ras_ref[i])
+  plot(ras, main = main_lab[i], col = col_list[[i]])
+  plot(towns, add = T, pch = 20,cex = 0.7)
+  maptools::pointLabel(coordinates(towns),labels=towns$field_2, cex = 0.7)
+}
+
+```
+
+\pagebreak
+
+
+# Species occurence maps
+<!-- The following two sections show a breakdown of each species and illustrated their mean occupancy and standard deviation across the study area. -->
+
+## Maps of mean occurence for individual species
+
+```{r occurence maps - mean, fig.width = 11, fig.height=13}
+load(here("data output","Occurence maps.RData"))
+
+par(mfrow = c(3,1))
+
+#This function seems to fix things(i.e. the plots falling outside the margins)
+my_plot_hook <- function(x, options)
+  paste("\n", knitr::hook_plot_tex(x, options), "\n")
+knitr::knit_hooks$set(plot = my_plot_hook)
+
+for(i in seq_along(sppref)){
+  PSIras <- raster(ncol = 150, nrow = 150)
+  extent(PSIras) <- extent(pentads_mean)+0.5 #Add 0.5 buffer
+  res(PSIras) <- c(0.0833,0.0833)
+  PSIras <- rasterize(pentads_mean,PSIras,sppref[i])
+  plot(PSIras,breaks=brks_mean, col=cols_mean, lab.breaks=brks_mean,
+       zlim=c(0,1), main = spp_ref[i])
+  plot(towns, add = T, pch = 20,cex = 0.7)
+  maptools::pointLabel(coordinates(towns),labels=towns$field_2, cex = 0.7)
+}
+
+```
+
+\pagebreak
+
+## Maps of standard deviation of mean occurence for individual species
+
+```{r occurence maps - sd,  fig.width = 11, fig.height=13}
+par(mfrow = c(3,1))
+
+## Might need to adad black border to study area (dissolve pentad_sp??)
+
+for(i in seq_along(sppref)){
+  PSIras <- raster(ncol = 150, nrow = 150)
+  extent(PSIras) <- extent(pentads_sd)+0.5 #Add 0.5 buffer
+  res(PSIras) <- c(0.0833,0.0833)
+  PSIras <- rasterize(pentads_sd,PSIras,sppref[i])
+  plot(PSIras,breaks=brks_sd, #lab.breaks=brks,
+       col = cols_sd, zlim=c(0,0.5), main = spp_ref[i]) # Change this zlim in other plots
+  plot(towns, add = T, pch = 20,cex = 0.7)
+  maptools::pointLabel(coordinates(towns),labels=towns$field_2, cex = 0.7)
+  
+}
+```
+
+
+\pagebreak
+
+# Appendices
+
+## Appendix A - Species list
+
+List of scorpion species recorded during the fieldwork surveys.
+
+```{r species list}
+dt <- data_frame(Species_name = spp_ref)
+colnames(dt) <- "Species"
+kable(dt, format = "latex",booktabs = T) #%>% 
+   #column_spec(1,italic = T) %>%
+```
+
+\pagebreak
+
+## Appendix B - Covariate maps
+
+Maps of environmental covariates across the BioGaps study area.
+
+```{r environmental covariate maps, fig.width = 11, fig.height=13}
+load(here("data output","Species richness maps.RData"))
+
+ras_ref <- c("ndvi","map_ctn","elev","tri_med")
+main_lab <- c("NDVI","Rainfall concentration","Elevation","TRI")
+
+mean_col <- rev(terrain.colors(255)) # elev,ndvi, tri
+topo_col <-  rev(topo.colors(n = 20)) # Rain and rain conc
+col_list <- list(mean_col,topo_col,mean_col,mean_col)
+
+par(mfrow = c(2,1))
+
+for(i in 1:length(ras_ref)){
+  ras <- raster(ncol = 150, nrow = 150)
+  extent(ras) <- raster::extent(pentads_sp)+0.5 #Add 0.5 buffer
+  res(ras) <- c(0.0833,0.0833)
+  ras <- raster::rasterize(pentads_sp,ras,ras_ref[i])
+  plot(ras,main = main_lab[[i]], col = col_list[[i]], margin=FALSE)
+  
+}
+
+
+
+```
+
+
+\pagebreak
+
+## Appendix C - Model diagnostics
+
+These plots show the posterior distribution of each derived model parameter. Following these are traceplots show R-hat values and diagnostics of parameter convergence. **Add explanation/key about parameter names**
+
+```{r posterior distributions (all parameters)}
+
+par(mfrow= c(4,3))
+
+for(i in 1:14){
+  id <- names(mod.out.F$sims.list)[i]
+  hist(mod.out.F$sims.list[[i]][], col = "grey", breaks = 60, main = "", xlab = id,freq = F)
+  abline(v = mod.out.F$summary[id,1], col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$summary[id,c(3,7)], col = "red", lwd = 3)   # add 95% CRI
+}
+
+for(i in 1:n_pen){
+  ref <- paste0("Nsite[",i,"]")
+  xlab <- paste0("No. of species: ",dimnames(Y)[[1]][i])
+  hist(mod.out.F$sims.list$Nsite[,i], col = "grey", breaks = 60, xlim = c(0,15), main = "", xlab = xlab, freq = F)
+  abline(v = mod.out.F$mean$Nsite[i] , col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$summary[ref,c(3,7)], col = "red", lwd = 3)  
+  
+}
+
+for(i in 1:n_spp){
+  ref <- paste0("Nocc.fs[",i,"]")
+  xlab <- paste0("No.occ sites: ",dimnames(Y)[[3]][i])
+  hist(mod.out.F$sims.list$Nocc.fs[,i], col = "grey", breaks = 60, xlim = c(0, 30), main = "", xlab = xlab, freq = F)
+  abline(v = mod.out.F$sims.list$Nocc.fs[i] , col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$summary[ref,c(3,7)], col = "red", lwd = 3)   
+}
+
+for(i in 1:n_spp){
+  ref <- paste0("lp[",i,"]")
+  xlab <- paste0("Detection prob: ",dimnames(Y)[[3]][i])
+  hist(inv.logit(mod.out.F$sims.list$lp[,i]), col = "grey", breaks = 60, xlim = c(0,1), main = "", xlab = xlab, freq = F)
+  abline(v = inv.logit(mod.out.F$mean$lp[i]), col = "blue", lwd = 3) #mean
+  abline(v = inv.logit(mod.out.F$summary[ref,c(3,7)]), col = "red", lwd = 3)   
+}
+
+for(i in 1:n_spp){
+  ref <- paste0("lpsi[",i,"]")
+  xlab <- paste0("Occupancy prob: ",dimnames(Y)[[3]][i])
+  hist(inv.logit(mod.out.F$sims.list$lpsi[,i]), col = "grey", breaks = 60, xlim = c(0,1), main = "", xlab = xlab, freq = F)
+  abline(v = inv.logit(mod.out.F$mean$lpsi[i]), col = "blue", lwd = 3) #mean
+  abline(v = inv.logit(mod.out.F$summary[ref,c(3,7)]), col = "red", lwd = 3)   
+}
+
+for(i in 1:n_spp){
+  ref <- paste0("beta1[",i,"]")
+  xlab <- paste0("NDVI: ",dimnames(Y)[[3]][i])
+  hist(mod.out.F$sims.list$beta1[,i], col = "grey", breaks = 60, xlim = c(-10,10), main = "", xlab = xlab, freq = F)
+  abline(v = mod.out.F$mean$beta1[i] , col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$summary[ref,c(3,7)], col = "red", lwd = 3)  
+  
+}
+
+for(i in 1:n_spp){
+  ref <- paste0("beta2[",i,"]")
+  xlab <- paste0("MAP_CTN: ",dimnames(Y)[[3]][i])
+  hist(mod.out.F$sims.list$beta2[,i], col = "grey", breaks = 60, xlim = c(-5,5), main = "", xlab = xlab, freq = F)
+  abline(v = mod.out.F$mean$beta2[i] , col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$summary[ref,c(3,7)], col = "red", lwd = 3)  
+  
+}
+
+for(i in 1:n_spp){
+  ref <- paste0("beta3[",i,"]")
+  xlab <- paste0("ELEV: ",dimnames(Y)[[3]][i])
+  hist(mod.out.F$sims.list$beta3[,i], col = "grey", breaks = 60, xlim = c(-5,5), main = "", xlab = xlab, freq = F)
+  abline(v = mod.out.F$mean$beta3[i] , col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$summary[ref,c(3,7)], col = "red", lwd = 3)  
+  
+}
+
+for(i in 1:n_spp){
+  ref <- paste0("beta4[",i,"]")
+  xlab <- paste0("ELEV RANGE: ",dimnames(Y)[[3]][i])
+  hist(mod.out.F$sims.list$beta4[,i], col = "grey", breaks = 60, xlim = c(-5,5), main = "", xlab = xlab, freq = F)
+  abline(v = mod.out.F$mean$beta4[i] , col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$summary[ref,c(3,7)], col = "red", lwd = 3)  
+  
+}
+
+hist(mod.out.F$sims.list$deviance, col = "grey", breaks = 60, xlim = c(600,900), main = "", xlab = "Deviance", freq = F)
+abline(v = mod.out.F$mean$deviance , col = "blue", lwd = 3) #mean
+abline(v = mod.out.F$summary["deviance",c(3,7)], col = "red", lwd = 3)
+
+```
+
+
+
+
