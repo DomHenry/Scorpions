@@ -3,7 +3,8 @@ library(coda)
 library(tidyverse)
 library(jagsUI)
 library(here)
-
+library(gridExtra)
+library(ggpubr)
 ## Plotting of parameters, predictions and diagnostics of bird TTD models
 
 # Import JAGS model workspaces --------------------------------------------
@@ -20,6 +21,19 @@ plotdf <- as_tibble(mod.out.F$summary[,1:7]) %>%
   rename(lower = `2.5%`, upper = `97.5%`)
 
 plotdf;plotdf$param
+
+# Psi & p table -----------------------------------------------------------
+pp_means<- plotdf %>% 
+  filter(param %in% c("mu.psi","mu.p"))
+
+pp_sds<- plotdf %>%
+  filter(param %in% c("sd.lpsi","sd.lp")) %>% 
+  mutate_at(vars(mean:upper),funs(inv.logit)) %>% 
+  mutate(param = str_replace(param, "l",""))
+
+pp <- bind_rows(pp_means,pp_sds)
+pp
+
 
 # Open PDF ----------------------------------------------------------------
 pdf(here("data output","Scorpion_JAGS_model_plots.pdf"), width = 16, height = 9)
@@ -53,7 +67,7 @@ ggplot(alphaR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = u
         axis.title=element_text(size=18,face="bold"))
 
 # Plot :: Detection covariate predictions ---------------------------------
-plot_coeff_curves(airtemp_arr,c(15,30,0.1),"alpha1",NA,"mu.p","Air temperature",c(0,0.8))
+plot_coeff_curves(airtemp_arr,c(15,30,0.1),"alpha1",NA,"mu.p","Air temperature","Detection probability",c(0,0.8))
 
 # Plot :: Species detection probability -----------------------------------
 p.spR <- plotdf %>% filter(str_detect(param, "lp\\[")) %>% 
@@ -73,10 +87,10 @@ ggplot(p.spR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = up
 # beta1[k] ~ dnorm(mu.beta1, tau.beta1)                # ndvi
 # beta2[k] ~ dnorm(mu.beta2, tau.beta2)                # map_ctn
 # beta3[k] ~ dnorm(mu.beta3, tau.beta3)                # elev   
-# beta4[k] ~ dnorm(mu.beta4, tau.beta4)                # elev_range   
+# beta4[k] ~ dnorm(mu.beta4, tau.beta4)                # tri   
 
 betaR <- plotdf %>% filter(str_detect(param, "mu.beta")) %>% 
-  mutate(param = as.factor(c("NDVI","RainConc", "Elev","Elev_range")))
+  mutate(param = as.factor(c("NDVI","RainConc", "Elev","tri")))
 
 ggplot(betaR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = upper)) +
   geom_pointrange() + theme_bw() + scale_y_continuous(limits = c(-1,1.5))+
@@ -86,21 +100,37 @@ ggplot(betaR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = up
         axis.text.y=element_text(size=18),
         axis.title=element_text(size=18,face="bold"))
 
-# Plot :: TTD occupancy predictions ---------------------------------------
-covs <- list(pencovs[["ndvi"]],pencovs[["map_ctn"]],pencovs[["elev"]],pencovs[["elev_range"]])
-ranges <- list(c(0,0.5,0.001),c(30,50,1),c(300,1700,5),c(30,1000,5))
+
+# Plot :: Occupancy predictions -------------------------------------------
+covs <- list(pencovs[["ndvi"]],pencovs[["map_ctn"]],pencovs[["elev"]],pencovs[["tri_med"]])
+ranges <- list(c(0,0.5,0.001),c(30,50,1),c(300,1700,5),c(10,700,5))
 coeffs1 <- list("mu.beta1","mu.beta2","mu.beta3","mu.beta4")
 coeffs2 <- NA
 intname <- "mu.psi"
-xlabs <- list("NDVI","Rainfall concentration","Elevation","Elevation range")
-ylim <- list(c(0,0.7))
+xlabs <- list("NDVI","Rainfall concentration","Elevation","TRI")
+ylabs <- list(rep("Occupancy probability",4))
+ylim <- list(c(0,1))
 
 # AMAZING! 
 par(mfrow = c(2,2))
-pmap(list(cov = covs, covRange = ranges,
+
+plots_out <- pmap(list(cov = covs, covRange = ranges,
           coeffname1 = coeffs1,coeffname2 = coeffs2,
-          intname = intname,xlab = xlabs,ylim = ylim),
+          intname = intname,xlab = xlabs,
+          ylab = ylabs, ylim = ylim),
      plot_coeff_curves)
+
+plots_out
+
+## Display plots
+grid.arrange(grobs = plots_out, ncol = 2) 
+
+## Alternatively 
+ggarrange(plots_out[[1]],
+          plots_out[[2]] + rremove("y.text") + rremove("ylab"),
+          plots_out[[3]],
+          plots_out[[4]] + rremove("y.text") + rremove("ylab"),
+          ncol = 2, nrow = 2)
 
 # Plot :: Species occupancy probability -----------------------------------
 psiR <- plotdf %>% filter(str_detect(param, "lpsi")) %>% 
@@ -131,12 +161,11 @@ ggplot(occ.fsR, aes(x = fct_reorder(param,mean), y = mean, ymin = lower, ymax = 
 
 coeffs <- list("beta1","beta2","beta3","beta4")
 xlims <- list(c(-5,5),c(-2,2),c(-2,2),c(-2,2))
-mainlabs <- list("NDVI","MAP_CTN","ELEV","ELEV_RANGE")
+mainlabs <- list("NDVI","MAP_CTN","ELEV","TRI")
 
 par(mfrow = c(1,2), cex.lab = 1.3, cex.axis = 1.3)
 
-# AMAZING! (technically should use pwalk() because function doesn't actually return anything)
-pmap(list(coeff_name = coeffs, main_lab = mainlabs, xlims = xlims, n = n_spp),
+pwalk(list(coeff_name = coeffs, main_lab = mainlabs, xlims = xlims, n = n_spp),
      random_effect_plots)
 
 
@@ -165,7 +194,7 @@ for(i in 1:n_spp){
   ref <- paste0("Nocc.fs[",i,"]")
   xlab <- paste0("No.occ sites: ",dimnames(Y)[[3]][i])
   hist(mod.out.F$sims.list$Nocc.fs[,i], col = "grey", breaks = 60, xlim = c(0, 30), main = "", xlab = xlab, freq = F)
-  abline(v = mod.out.F$sims.list$Nocc.fs[i] , col = "blue", lwd = 3) #mean
+  abline(v = mod.out.F$mean$Nocc.fs[i] , col = "blue", lwd = 3) #mean
   abline(v = mod.out.F$summary[ref,c(3,7)], col = "red", lwd = 3)   
 }
 

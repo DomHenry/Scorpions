@@ -29,14 +29,14 @@ str(zPen <- array(NA, dim = c(n_all_pen,n_spp, n_samp)) )
 # Acccess node names and extract posterior samples ------------------------
 att <- attributes(mod)$dimnames[2][[1]][]
 coeffs <- c("lpsi","beta1","beta2","beta3","beta4")
-coeffOut <- list()
+coeff_out <- list()
 
 for(i in 1:length(coeffs)){
   ref <- which(grepl(coeffs[i],att) & 
         !grepl(c("sd"),att) & !grepl(c("mu"),att)) # Exclude sd and mu
-  coeffOut[[i]] <- mod[,ref]
+  coeff_out[[i]] <- mod[,ref]
 }
-names(coeffOut) <- c("LPSI","BETA1","BETA2","BETA3","BETA4")
+names(coeff_out) <- c("LPSI","BETA1","BETA2","BETA3","BETA4")
 
 # Generate occupancy predictions for 100 samples --------------------------
 for(i in 1:n_all_pen){             
@@ -44,11 +44,11 @@ for(i in 1:n_all_pen){
   if(i %in% print.vec){cat(paste("\nPentad ", i))}
 
   for(u in 1:length(select_samp)){
-    psi <- plogis(coeffOut[["LPSI"]][select_samp[u],] + 
-                    coeffOut[["BETA1"]][select_samp[u],] * pencovs_all_sc$ndvi[i] + 
-                    coeffOut[["BETA2"]][select_samp[u],] * pencovs_all_sc$map_ctn[i] +
-                    coeffOut[["BETA3"]][select_samp[u],] * pencovs_all_sc$elev[i] + 
-                    coeffOut[["BETA4"]][select_samp[u],] * pencovs_all_sc$elev_range[i])
+    psi <- plogis(coeff_out[["LPSI"]][select_samp[u],] + 
+                    coeff_out[["BETA1"]][select_samp[u],] * pencovs_all_sc$ndvi[i] + 
+                    coeff_out[["BETA2"]][select_samp[u],] * pencovs_all_sc$map_ctn[i] +
+                    coeff_out[["BETA3"]][select_samp[u],] * pencovs_all_sc$elev[i] + 
+                    coeff_out[["BETA4"]][select_samp[u],] * pencovs_all_sc$elev_range[i])
     zPen[i,,u] <- rbinom(n_spp, 1, psi)
     
   }
@@ -72,7 +72,7 @@ main_lab <- c("Scorpion species richness","Scorpion species richness - SD")
 
 # Plot species richness maps ----------------------------------------------
 col_mean <- rev(terrain.colors(255)) 
-col_sd = rev(heat.colors(n = 8))
+col_sd <-  rev(heat.colors(n = 8))
 col_list <- list(col_mean,col_sd)
 
 pdf(here("data output","Scorpions_SR_raster.pdf"), width = 16, height = 9)
@@ -90,17 +90,25 @@ for(i in 1:length(ras_ref)){
 
 dev.off()
 
-# Notes -------------------------------------------------------------------
 
-## Take the elements of the columns of the covs.all and subtract the mean from covs data set
-#trans <- sweep(covs.all[,-1], 2, d.mean,"-") 
-## Take the elements of the columns of the trans1 and divide by the sd from the covs data set
-#covs.pred <- sweep(trans, 2, d.sd,"/")
-## Do it in one line
-covs.pred <- sweep(sweep(covs.all[,-1], 2, d.mean,"-"), 2, d.sd,"/") %>% 
-  mutate(PENTAD = covs.all$PENTAD) %>%  as_tibble()
-covs.pred
-## See these link to further understand sweep() 
-## https://stackoverflow.com/questions/3444889/how-to-use-the-r-function-sweep
-## https://magesblog.com/post/2012-04-14-sweeping-through-data-in-r/
+# Plot environmental covariates -------------------------------------------
+ras_ref <- c("ndvi","map_ctn","elev","tri_med")
+main_lab <- c("NDVI","Rainfall concentration","Elevation","TRI")
+
+mean_col <- rev(terrain.colors(255)) # elev,ndvi, tri
+topo_col <-  rev(topo.colors(n = 20)) # Rain and rain conc
+col_list <- list(mean_col,topo_col,mean_col,mean_col)
+
+for(i in 1:length(ras_ref)){
+  ras <- raster(ncol = 150, nrow = 150)
+  extent(ras) <- raster::extent(pentads_sp)+0.5 #Add 0.5 buffer
+  res(ras) <- c(0.0833,0.0833)
+  ras <- raster::rasterize(pentads_sp,ras,ras_ref[i])
+  plot(ras,main = main_lab[[i]], col = col_list[[i]], margin=FALSE)
+  
+}
+
+# Save workspace ----------------------------------------------------------
+save(list = c(ls()[!ls() %in% c("mod","coeff_out","outB")]),file = here("data output","Species richness maps.RData"))
+
 

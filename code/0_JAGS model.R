@@ -11,7 +11,7 @@ cat("
       beta1[k] ~ dnorm(mu.beta1, tau.beta1)                # ndvi
       beta2[k] ~ dnorm(mu.beta2, tau.beta2)                # map_ctn
       beta3[k] ~ dnorm(mu.beta3, tau.beta3)                # elev   
-      beta4[k] ~ dnorm(mu.beta4, tau.beta4)                # elev_range   
+      beta4[k] ~ dnorm(mu.beta4, tau.beta4)                # tri  
     }
     
     mu.psi ~ dunif(0,1)
@@ -51,7 +51,7 @@ cat("
       for (i in 1:n_pen) {            # Loop over sites
         z[i,k] ~ dbern(psi[i,k])
         logit(psi[i,k]) <- lpsi[k] + beta1[k]*ndvi[i] + beta2[k]*map_ctn[i] + 
-                                     beta3[k]*elev[i] + beta4[k]*elev_range[i] 
+                                     beta3[k]*elev[i] + beta4[k]*tri[i] 
       }
     }
     

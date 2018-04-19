@@ -11,7 +11,7 @@ Y[1:10,1:5,1:2]
 # Compile data, inits and parameters for JAGS model -----------------------
 str(jags_data <- list(Y = Y, n_spp = dim(Y)[3], n_pen = dim(Y)[1], rep_vec = rep_df$n_transects,
                       ndvi = pencovs_sc$ndvi, map_ctn = pencovs_sc$map_ctn, 
-                      elev = pencovs_sc$elev, elev_range = pencovs_sc$elev_range,
+                      elev = pencovs_sc$elev, tri = pencovs_sc$tri_med,
                       airtemp = airtemp_arr_sc, observer = observer_arr))
 
 zst <- array(1, dim = c(dim(Y)[1],dim(Y)[3])) 
@@ -71,6 +71,6 @@ mod.out.B <- jags.basic(jags_data, inits, paramchoose, "OccMod1.txt", n.chains =
 
 library(coda)
 outB <- as.matrix(mod.out.B) # Put output from 3 chains into a matrix
-rm(mod.out.B)
+rm(mod.out.B)0
 save.image(here("data output","JAGSout_B_P1.RData"))
 

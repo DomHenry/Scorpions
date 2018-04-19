@@ -1,14 +1,10 @@
 library(tidyverse)
 library(lubridate)
 library(here)
+
 # Wed Nov 15 09:52:14 2017 ------------------------------
 
-## Notes: 1. Only have data from 11 pentads
-#         2. There are a number of records that have no associated 
-#            track ID (point records) - confirm they are ad hoc records  
-#         3. Import spatial data and add covariates (survey duration, distance)
-#         4. Import temperature data and add as detection covariate
-#         5. Given the different searching abilities, observer ID should be added as a detection covariate (factor)
+## Notes: 1. Import spatial data and add covariates (survey duration, distance)
 
 # Import specimen data and clean ------------------------------------------
 data <- read_csv(here("data input","scorpions_all.csv"))
@@ -53,6 +49,7 @@ rep_ref <- c(1:n_reps)
 
 n_spp <- scorp %>% distinct(spp) %>% nrow()
 spp_ref <- scorp %>% arrange(spp) %>% distinct(spp) %>% arrange() %>% pull()
+fam_ref <- scorp %>% arrange(family) %>% distinct(family) %>% arrange() %>% pull()
 
 n_pen <- scorp %>% distinct(pentad) %>% nrow()
 pen_ref <- scorp %>% arrange(pentad) %>% distinct(pentad) %>% pull() 
@@ -129,7 +126,7 @@ ndvi <- read_csv(here("data input","modis_ndvi.csv")) %>%
 
 pencovs_all <- read_csv(here("data input","pentadCovs.csv")) %>% 
   rename_all(tolower) %>% 
-  select(pentad,map,map_ctn,elev,elev_range) %>% 
+  select(pentad,map,map_ctn,elev,elev_range,tri_med) %>% 
   left_join(select(ndvi, pentad, mean_all),by = "pentad") %>% 
   rename(ndvi = mean_all)
 pencovs_all
@@ -139,7 +136,7 @@ pencovs_sc <- pencovs %>% mutate_at(vars(map:ndvi),scale) %>% mutate_at(vars(map
 airtemp_arr_sc <- scale(airtemp_arr)
 
 rm(list = ls()[!ls() %in% c("data","scorp","Y","n_pen","n_reps","n_spp","airtemp_arr","airtemp_arr_sc",
-                            "pen_ref", "rep_ref","spp_ref","rep_df","pencovs",
+                            "pen_ref", "rep_ref","spp_ref","rep_df","pencovs","fam_ref",
                             "pencovs_sc","pencovs_all","observer","observer_arr")])
 
 save.image(here("data output","Arrays.RData"))

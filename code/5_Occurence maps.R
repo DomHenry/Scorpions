@@ -61,34 +61,29 @@ for (s in 1:n_spp){
 pm_psi <- apply(psi_pen, c(1,3), mean, na.rm = TRUE)      # posterior mean
 sd_psi <- apply(psi_pen, c(1,3), sd, na.rm = TRUE)   
 
-# Save workspace ----------------------------------------------------------
-
-## First remove large objects 
-save(list = c(ls()[!ls() %in% c("mod","coeff_out")]),file = here("data output","Occurence maps.RData"))
-## Import "Occurence maps.RData" if need to alter the appearence of maps
-
 # Plot species mean occupancy ---------------------------------------------
 pentads_sp <- readOGR(here("data input","BioGapsAllPens.shp"))
 towns <- readOGR(here("data input","karoo_towns.shp"))
+
 df_psi <- as.data.frame(pm_psi)
 covs_psi <- cbind(pencovs_all,df_psi)
-pentads <- subset(pentads_sp, pentads_sp$PENTADE %in% covs_psi$pentad)
-pentads <- merge(pentads, covs_psi, by.x = "PENTADE",by.y="pentad")
-head(pentads)
+pentads_mean <- subset(pentads_sp, pentads_sp$PENTADE %in% covs_psi$pentad)
+pentads_mean <- merge(pentads_mean, covs_psi, by.x = "PENTADE",by.y="pentad")
+head(pentads_mean)
 
-brks <- seq(0, 1, by=0.1) 
-nb <- length(brks)-1 
-cols <- rev(terrain.colors(nb))
+brks_mean <- seq(0, 1, by=0.1) 
+nb_mean <- length(brks_mean)-1 
+cols_mean <- rev(terrain.colors(nb_mean))
 sppref <- paste0("V",c(1:n_spp))
 
 pdf(here("data output","Scorpions_SppOccupancy_mean.pdf"), width = 16, height = 9)
 par(mfrow = c(1,1))
 for(i in seq_along(sppref)){
   PSIras <- raster(ncol = 150, nrow = 150)
-  extent(PSIras) <- extent(pentads)+0.5 #Add 0.5 buffer
+  extent(PSIras) <- extent(pentads_mean)+0.5 #Add 0.5 buffer
   res(PSIras) <- c(0.0833,0.0833)
-  PSIras <- rasterize(pentads,PSIras,sppref[i])
-  plot(PSIras,breaks=brks, col=cols, lab.breaks=brks,
+  PSIras <- rasterize(pentads_mean,PSIras,sppref[i])
+  plot(PSIras,breaks=brks_mean, col=cols_mean, lab.breaks=brks_mean,
        zlim=c(0,1), main = spp_ref[i])
   plot(towns, add = T, pch = 20,cex = 0.7)
   maptools::pointLabel(coordinates(towns),labels=towns$field_2, cex = 0.7)
@@ -96,16 +91,15 @@ for(i in seq_along(sppref)){
 dev.off()
 
 # Plot species SD occupancy -----------------------------------------------
-pentads_sp <- readOGR(here("data input","BioGapsAllPens.shp"))
 df_psi <- as.data.frame(sd_psi)
 covs_psi <- cbind(pencovs_all,df_psi)
-pentads <- subset(pentads_sp, pentads_sp$PENTADE %in% covs_psi$pentad)
-pentads <- merge(pentads, covs_psi, by.x = "PENTADE",by.y="pentad")
-head(pentads)
+pentads_sd <- subset(pentads_sp, pentads_sp$PENTADE %in% covs_psi$pentad)
+pentads_sd <- merge(pentads_sd, covs_psi, by.x = "PENTADE",by.y="pentad")
+head(pentads_sd)
 
-brks <- seq(0, 0.5, by=0.05) 
-nb <- length(brks)-1 
-cols <- rev(heat.colors(nb))
+brks_sd <- seq(0, 0.5, by=0.05) 
+nb_sd <- length(brks_sd)-1 
+cols_sd<- rev(heat.colors(nb_sd))
 sppref <- paste0("V",c(1:n_spp))
 
 pdf(here("data output","Scorpions_SppOccupancy_standev.pdf"), width = 16, height = 9)
@@ -113,18 +107,22 @@ pdf(here("data output","Scorpions_SppOccupancy_standev.pdf"), width = 16, height
 par(mfrow = c(1,1))
 for(i in seq_along(sppref)){
   PSIras <- raster(ncol = 150, nrow = 150)
-  extent(PSIras) <- extent(pentads)+0.5 #Add 0.5 buffer
+  extent(PSIras) <- extent(pentads_sd)+0.5 #Add 0.5 buffer
   res(PSIras) <- c(0.0833,0.0833)
-  PSIras <- rasterize(pentads,PSIras,sppref[i])
-  plot(PSIras,breaks=brks, #lab.breaks=brks,
-       col = cols, zlim=c(0,0.5), main = spp_ref[i]) # Change this zlim in other plots
+  PSIras <- rasterize(pentads_sd,PSIras,sppref[i])
+  plot(PSIras,breaks=brks_sd, #lab.breaks=brks,
+       col = cols_sd, zlim=c(0,0.5), main = spp_ref[i]) # Change this zlim in other plots
   plot(towns, add = T, pch = 20,cex = 0.7)
   maptools::pointLabel(coordinates(towns),labels=towns$field_2, cex = 0.7)
   
 }
 dev.off()
 
+# Save workspace ----------------------------------------------------------
 
+## First remove large objects 
+save(list = c(ls()[!ls() %in% c("mod","coeff_out","outB")]),file = here("data output","Occurence maps.RData"))
+## Import "Occurence maps.RData" if need to alter the appearence of maps
 
 # End ---------------------------------------------------------------------
 

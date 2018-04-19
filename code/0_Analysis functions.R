@@ -1,7 +1,7 @@
 ## Functions for the analysis of the Scorpion data set
 
-# Plot TTD detection covariates  ------------------------------------------
-plot_coeff_curves <- function(cov,covRange,coeffname1,coeffname2,intname,xlab,ylim) {
+# Plot occupancy/detection covariates -------------------------------------
+plot_coeff_curves <- function(cov,covRange,coeffname1,coeffname2,intname,xlab,ylab,ylim) {
   
   vec <- which(!is.na(cov))
   vec <- cov[vec]
@@ -34,14 +34,28 @@ plot_coeff_curves <- function(cov,covRange,coeffname1,coeffname2,intname,xlab,yl
   
   LPB <-  apply(predictions, 1, quantile, probs = 0.025) # Lower bound
   UPB <-  apply(predictions, 1, quantile, probs = 0.975) # Upper bound
-  y <- apply(predictions, 1, mean) # Upper bound
+  y <- apply(predictions, 1, mean) 
   ylim <- ylim
   
-  plot(orig.pred, y, xlab = xlab, ylab = "Detection prob.", type = "n",
-       ylim = ylim, col = "red", lwd = 3, frame = F,
-       cex.lab = 1.6) #Plot with original labels
-  polygon(c(orig.pred, rev(orig.pred)), c(UPB, rev(LPB)), col = "lightsteelblue", border = NA)
-  lines(orig.pred, y, lwd = 3, col = "blue")
+  plotdf <- data_frame(xcol = orig.pred, ycol = y, lower = LPB, upper = UPB)
+
+  finalplot <- ggplot(plotdf, aes(x = xcol, y = ycol)) +
+    geom_line(colour="black", size = 2) +
+    geom_ribbon(aes(ymin=lower, ymax=upper), alpha=0.2) +
+    xlab(xlab) +
+    ylab(ylab) +
+    #scale_x_continuous(breaks = c(8:14))+
+    scale_y_continuous(limits = ylim)+
+    theme(axis.text.x=element_text(size=16, colour = "black"),
+          axis.text.y=element_text(size=16, colour = "black"),
+          axis.title = element_text(size = 16,margin = margin(t = 0, r = 20, b = 100, l = 20)),
+          panel.grid = element_blank(),panel.background = element_blank(),
+          panel.border = element_blank(),
+          axis.line = element_line(size = 1),
+          axis.ticks = element_line(color = "black",size = 1.2),
+          axis.ticks.length = unit(0.2,"cm"))
+  
+  return(finalplot)
   
 }
 
